@@ -148,6 +148,9 @@ export default class LocalRuntime {
       this.log(`Logging network requests`)
       Network.requestWillBeSent(this.trafficLog.onRequest)
     }
+    if(this.chromelessOptions.onRequest) {
+      Network.requestWillBeSent(this.chromelessOptions.onRequest)
+    }
     await Page.navigate({ url })
     await Page.loadEventFired()
     this.log(`Navigated to ${url}`)
