@@ -8,10 +8,12 @@ import {
   PdfOptions,
   ScreenshotOptions,
 } from '../types'
+import TrafficLog from '../network'
 import {
   nodeExists,
   wait,
   waitForNode,
+  waitForRequest,
   click,
   evaluate,
   screenshot,
@@ -45,17 +47,26 @@ import {
 export default class LocalRuntime {
   private client: Client
   private chromelessOptions: ChromelessOptions
+  private trafficLog: TrafficLog
   private userAgentValue: string
 
   constructor(client: Client, chromelessOptions: ChromelessOptions) {
     this.client = client
     this.chromelessOptions = chromelessOptions
+    this.trafficLog = new(TrafficLog)
+  }
+
+  private async waitRequest(url: string, fn: Function): Promise<Request[]> {
+    this.log(`Waiting for request on url: ${url}`)
+    const result = await waitForRequest(this.trafficLog, url, fn, this.chromelessOptions.waitTimeout)
+    this.log(`Waited for request on url: ${url}`)
+    return result
   }
 
   async run(command: Command): Promise<any> {
     switch (command.type) {
       case 'goto':
-        return this.goto(command.url)
+        return this.goto(command.url, command.logRequests)
       case 'setViewport':
         return setViewport(this.client, command.options)
       case 'wait': {
@@ -63,6 +74,8 @@ export default class LocalRuntime {
           return this.waitSelector(command.selector, command.timeout)
         } else if (command.timeout) {
           return this.waitTimeout(command.timeout)
+        } else if (command.url) {
+          return this.waitRequest(command.url, command.fn)
         } else {
           throw new Error('waitFn not yet implemented')
         }
@@ -126,11 +139,15 @@ export default class LocalRuntime {
     }
   }
 
-  private async goto(url: string): Promise<void> {
+  private async goto(url: string, logRequests: boolean): Promise<void> {
     const { Network, Page } = this.client
     await Promise.all([Network.enable(), Page.enable()])
     if (!this.userAgentValue) this.userAgentValue = `Chromeless ${version}`
     await Network.setUserAgentOverride({ userAgent: this.userAgentValue })
+    if(logRequests) {
+      this.log(`Logging network requests`)
+      Network.requestWillBeSent(this.trafficLog.onRequest)
+    }
     await Page.navigate({ url })
     await Page.loadEventFired()
     this.log(`Navigated to ${url}`)

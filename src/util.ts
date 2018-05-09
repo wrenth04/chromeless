@@ -11,6 +11,7 @@ import {
   Viewport,
   Headers,
 } from './types'
+import TrafficLog from './network'
 import * as CDP from 'chrome-remote-interface'
 import * as AWS from 'aws-sdk'
 
@@ -99,6 +100,31 @@ export async function waitForNode(
     })
   } else {
     return
+  }
+}
+
+export async function waitForRequest(trafficLog: TrafficLog, url: string, fn: Function, waitTimeout: number): Promise<Request[]> {
+  const result = await trafficLog.getRequests(url, fn)
+
+  if (!result.finished) {
+    const start = new Date().getTime()
+    return new Promise<Request[]>((resolve, reject) => {
+      const interval = setInterval(async () => {
+        if (new Date().getTime() - start > waitTimeout) {
+          clearInterval(interval)
+          reject(new Error(`waitForRequest("${url}") timed out after ${waitTimeout}ms`))
+        }
+
+        const result = await trafficLog.getRequests(url, fn)
+
+        if (result.finished) {
+          clearInterval(interval)
+          resolve(result.requests)
+        }
+      }, 500)
+    })
+  } else {
+    return result.requests
   }
 }
 
